@@ -1486,6 +1486,20 @@ class RouteChoice:
         s.route_pref += weights[:, np.newaxis] * next_node_mask
 
 
+class RouteChoiceAlternative(RouteChoice):
+    # change name etc
+    def route_search_all(s, infty=np.inf, noise=0):
+
+        ########################### TODO ##################################### instantiate correctly the adj matrix 
+        
+        #  copy of the other code that should be the same
+        #computes the shortest path from *destination* to *origin*, so that the pred_matrix becomes the next_matrix in the original problem. It is simply achieved by tranposing the matrices twice.
+        dist, pred = dijkstra(csr_matrix(s.adj_mat_time).T, return_predecessors=True)
+        s.dist = dist.T
+        s.next = pred.T
+
+        s.dist_record[s.W.T] = s.dist
+
 class World:
     """
     World (i.e., simulation environment). A World object is consistently referred to as `W` in this code.
