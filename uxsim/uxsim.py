@@ -1486,19 +1486,65 @@ class RouteChoice:
         s.route_pref += weights[:, np.newaxis] * next_node_mask
 
 
-class RouteChoiceAlternative(RouteChoice):
+class RouteChoiceLocalInfo(RouteChoice):
     # change name etc
     def route_search_all(s, infty=np.inf, noise=0):
-
         ########################### TODO ##################################### instantiate correctly the adj matrix 
-        
         #  copy of the other code that should be the same
-        #computes the shortest path from *destination* to *origin*, so that the pred_matrix becomes the next_matrix in the original problem. It is simply achieved by tranposing the matrices twice.
-        dist, pred = dijkstra(csr_matrix(s.adj_mat_time).T, return_predecessors=True)
-        s.dist = dist.T
-        s.next = pred.T
+        s.adj_mat_time = np.zeros([len(s.W.NODES), len(s.W.NODES)])
+        adj_mat_link_count = np.zeros([len(s.W.NODES), len(s.W.NODES)])
 
-        s.dist_record[s.W.T] = s.dist
+        for link in s.W.LINKS:
+            i = link.start_node.id
+            j = link.end_node.id
+            if s.W.ADJ_MAT[i,j]:
+                if s.W.hard_deterministic_mode == False:
+                    new_link_tt = link.traveltime_instant[-1]*s.W.rng.uniform(1, 1+noise) + link.route_choice_penalty
+                else:
+                    new_link_tt = link.traveltime_instant[-1] + link.route_choice_penalty
+                n = adj_mat_link_count[i,j]
+                s.adj_mat_time[i,j] = s.adj_mat_time[i,j]*n/(n+1) + new_link_tt/(n+1) # if there are multiple links between the same nodes, average the travel time
+                # s.adj_mat_time[i,j] = new_link_tt #if there is only one link between the nodes, this line is fine, but for generality we use the above line
+                adj_mat_link_count[i,j] += 1
+                if link.capacity_in == 0: #if the inflow is profibited, travel time is assumed to be infinite
+                    s.adj_mat_time[i,j] = np.inf
+            else:
+                s.adj_mat_time[i,j] = np.inf
+
+        dist = np.zeros([len(s.W.NODES), len(s.W.NODES)])
+        pred = np.zeros([len(s.W.NODES), len(s.W.NODES)])
+        # attempt code
+        for i in s.W.nodes:
+            adj_mat_time_n = np.zeros([len(s.W.NODES), len(s.W.NODES)])
+            adj_mat_link_count_n = np.zeros([len(s.W.NODES), len(s.W.NODES)])
+            
+            for link in s.W.LINKS:
+                i = link.start_node.id
+                j = link.end_node.id
+                if s.W.ADJ_MAT[i,j]:
+
+                    if i==n:
+                        adj_mat_time_n[i,j] = s.adj_mat_time[i,j]
+                    else:
+                        free_flow_traveltime = link.length / link.free_flow_speed
+                        
+                        new_link_tt = free_flow_traveltime 
+                        n = adj_mat_link_count_n[i,j]
+                        adj_mat_time_n[i,j] = adj_mat_time_n[i,j]*n/(n+1) + new_link_tt/(n+1) # if there are multiple links between the same nodes, average the travel time
+                        # s.adj_mat_time[i,j] = new_link_tt #if there is only one link between the nodes, this line is fine, but for generality we use the above line
+                        adj_mat_link_count_n[i,j] += 1
+
+            dist_n, pred_n = dijkstra(csr_matrix(adj_mat_time_n).T, return_predecessors=True)
+            dist[i,:] = dist_n[i,:] # CHECK THAT THIS IS CORRECT
+            pred[i,:] = pred_n[i,:] # CHECK THAT THIS IS CORRECT
+        
+
+        #computes the shortest path from *destination* to *origin*, so that the pred_matrix becomes the next_matrix in the original problem. It is simply achieved by tranposing the matrices twice.
+        #dist, pred = dijkstra(csr_matrix(s.adj_mat_time).T, return_predecessors=True)
+        #s.dist = dist.T
+        #s.next = pred.T
+
+        #s.dist_record[s.W.T] = s.dist
 
 class World:
     """
