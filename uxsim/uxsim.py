@@ -1514,7 +1514,7 @@ class RouteChoiceLocalInfo(RouteChoice):
         dist = np.zeros([len(s.W.NODES), len(s.W.NODES)])
         pred = np.zeros([len(s.W.NODES), len(s.W.NODES)])
         # attempt code
-        for node in s.W.nodes:
+        for node in s.W.NODES:
             adj_mat_time_n = np.zeros([len(s.W.NODES), len(s.W.NODES)])
             adj_mat_link_count_n = np.zeros([len(s.W.NODES), len(s.W.NODES)])
             
@@ -1523,7 +1523,7 @@ class RouteChoiceLocalInfo(RouteChoice):
                 j = link.end_node.id
                 if s.W.ADJ_MAT[i,j]:
 
-                    if i==node:
+                    if i==node.id:
                         adj_mat_time_n[i,j] = s.adj_mat_time[i,j]
                     else:
                         free_flow_traveltime = link.length / link.free_flow_speed
@@ -1534,9 +1534,9 @@ class RouteChoiceLocalInfo(RouteChoice):
                         # s.adj_mat_time[i,j] = new_link_tt #if there is only one link between the nodes, this line is fine, but for generality we use the above line
                         adj_mat_link_count_n[i,j] += 1
 
-            dist_n, pred_n = dijkstra(csr_matrix(adj_mat_time_n).T, indices = node, return_predecessors=True)
-            dist[node,:] = dist_n # CHECK THAT THIS IS CORRECT
-            pred[node,:] = pred_n # CHECK THAT THIS IS CORRECT
+            dist_n, pred_n = dijkstra(csr_matrix(adj_mat_time_n).T, indices = node.id, return_predecessors=True)
+            dist[node.id,:] = dist_n # CHECK THAT THIS IS CORRECT
+            pred[node.id,:] = pred_n # CHECK THAT THIS IS CORRECT
         
 
         #computes the shortest path from *destination* to *origin*, so that the pred_matrix becomes the next_matrix in the original problem. It is simply achieved by tranposing the matrices twice.
