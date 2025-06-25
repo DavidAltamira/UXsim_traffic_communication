@@ -1514,7 +1514,7 @@ class RouteChoiceLocalInfo(RouteChoice):
         dist = np.zeros([len(s.W.NODES), len(s.W.NODES)])
         pred = np.zeros([len(s.W.NODES), len(s.W.NODES)])
         # attempt code
-        for i in s.W.nodes:
+        for node in s.W.nodes:
             adj_mat_time_n = np.zeros([len(s.W.NODES), len(s.W.NODES)])
             adj_mat_link_count_n = np.zeros([len(s.W.NODES), len(s.W.NODES)])
             
@@ -1523,7 +1523,7 @@ class RouteChoiceLocalInfo(RouteChoice):
                 j = link.end_node.id
                 if s.W.ADJ_MAT[i,j]:
 
-                    if i==n:
+                    if i==node:
                         adj_mat_time_n[i,j] = s.adj_mat_time[i,j]
                     else:
                         free_flow_traveltime = link.length / link.free_flow_speed
@@ -1534,17 +1534,18 @@ class RouteChoiceLocalInfo(RouteChoice):
                         # s.adj_mat_time[i,j] = new_link_tt #if there is only one link between the nodes, this line is fine, but for generality we use the above line
                         adj_mat_link_count_n[i,j] += 1
 
-            dist_n, pred_n = dijkstra(csr_matrix(adj_mat_time_n).T, return_predecessors=True)
-            dist[i,:] = dist_n[i,:] # CHECK THAT THIS IS CORRECT
-            pred[i,:] = pred_n[i,:] # CHECK THAT THIS IS CORRECT
+            dist_n, pred_n = dijkstra(csr_matrix(adj_mat_time_n).T, indices = node, return_predecessors=True)
+            dist[node,:] = dist_n # CHECK THAT THIS IS CORRECT
+            pred[node,:] = pred_n # CHECK THAT THIS IS CORRECT
         
 
         #computes the shortest path from *destination* to *origin*, so that the pred_matrix becomes the next_matrix in the original problem. It is simply achieved by tranposing the matrices twice.
         #dist, pred = dijkstra(csr_matrix(s.adj_mat_time).T, return_predecessors=True)
-        #s.dist = dist.T
-        #s.next = pred.T
+        
+        s.dist = dist.T
+        s.next = pred.T
 
-        #s.dist_record[s.W.T] = s.dist
+        s.dist_record[s.W.T] = s.dist
 
 class World:
     """
@@ -2681,6 +2682,67 @@ class World:
         with open(f"{fname}.pkl", "wb") as f:
             pickle.dump(W, f)
 
+class WorldLocalChoice(World):
+    def finalize_scenario(W, tmax=None):
+        """
+        Finalizes the settings and preparations for the simulation scenario execution.
+
+        Parameters
+        ----------
+        tmax : float, optional
+            The maximum simulation time. If not provided, it will be determined based on the departure times of the vehicles.
+
+        Notes
+        -----
+        This function automatically called by `exec_simulation()` if it has not been called manually.
+        """
+        if W.TMAX == None:
+            if tmax == None:
+                tmax = 0
+                for veh in W.VEHICLES.values():
+                    if veh.departure_time*W.DELTAT > tmax:
+                        tmax = veh.departure_time*W.DELTAT
+                W.TMAX = (tmax//1800+2)*1800
+            else:
+                W.TMAX = tmax    #s
+
+        W.T = 0 #timestep
+        W.TIME = 0 #s
+
+        W.TSIZE = int(W.TMAX/W.DELTAT)
+        W.Q_AREA = ddict(lambda: np.zeros(int(W.TMAX/W.EULAR_DT)))
+        W.K_AREA = ddict(lambda: np.zeros(int(W.TMAX/W.EULAR_DT)))
+        for l in W.LINKS:
+            l.init_after_tmax_fix()
+
+        #generate adjacency matrix
+        W.ROUTECHOICE = RouteChoiceLocalInfo(W)
+        W.ADJ_MAT = np.zeros([len(W.NODES), len(W.NODES)])
+        W.ADJ_MAT_LINKS = dict() #リンクオブジェクトが入った隣接行列（的な辞書）
+        W.NODE_PAIR_LINKS = dict() #リンクオブジェクトが入った隣接行列（的な辞書）．キーはノード名
+        for link in W.LINKS:
+            for i,start_node in enumerate(W.NODES):
+                if start_node == link.start_node:
+                    break
+            for j,end_node in enumerate(W.NODES):
+                if end_node == link.end_node:
+                    break
+            W.ADJ_MAT[i,j] = 1
+            W.ADJ_MAT_LINKS[i,j] = link
+            W.NODE_PAIR_LINKS[start_node.name,end_node.name] = link
+
+        W.analyzer = Analyzer(W)
+
+        W.finalized = 1
+
+        ## 問題規模表示
+        if W.print_mode:
+            W.print_scenario_stats()
+
+        W.sim_start_time = time.time()
+        W.print("simulating...")
+
+    
 
 class Route:
     """
