@@ -1,3 +1,24 @@
+import numpy as np
+
+def print_matrix(mat, fmt="{:8.3f}", sep=" "):
+    """
+    Pretty-print a 2D matrix or numpy array.
+
+    Parameters
+    ----------
+    mat : array-like
+        The matrix (list of lists or numpy array).
+    fmt : str
+        Format string for entries (default = 8-wide, 3 decimals).
+        Examples: "{:d}" for integers, "{:8.2e}" for scientific.
+    sep : str
+        Separator between columns (default = " ").
+    """
+    mat = np.asarray(mat)
+    for row in mat:
+        print('route matrix', sep.join(fmt.format(val) for val in row))
+        
+        
 """
 UXsim: Macroscopic/mesoscopic traffic flow simulator in a network.
 This `uxsim.py` is the core of UXsim. It summarizes the classes and methods that are essential for the simulation.
@@ -1181,7 +1202,10 @@ class Vehicle:
                 if set(outlinks) & set(s.links_avoid):
                     outlinks = sorted(set(outlinks) - set(s.links_avoid), key=lambda l:l.name)
 
-                preference = np.array([s.route_pref[l.id] for l in outlinks], dtype=float)
+                preference = np.array([s.route_pref[l.id]  for l in outlinks], dtype=float)
+                #print(s.link.start_node, s.link.end_node)
+                #print(outlinks)
+                #print(preference)
                 if s.W.hard_deterministic_mode == False:
                     if sum(preference) > 0:
                         s.route_next_link = s.W.rng.choice(outlinks, p=preference/sum(preference))
@@ -1468,6 +1492,7 @@ class RouteChoice:
         # Initialize weight array
         weights = np.full(num_nodes, weight0)
         weights[empty_pref_mask] = 1
+        print('weights', weights)
 
         # Create arrays for start and end nodes of links
         start_nodes = np.array([l.start_node.id for l in s.W.LINKS])
@@ -1477,6 +1502,7 @@ class RouteChoice:
         next_node_mask = np.zeros((num_nodes, num_links), dtype=bool)
         for k in range(num_nodes):
             next_node_mask[k] = end_nodes == s.next[start_nodes, k]
+        print('next_node_mask', next_node_mask)
 
         # Update route preferences
         # In-place scaling of all elements
@@ -1484,7 +1510,7 @@ class RouteChoice:
 
         # In-place addition of weights where next_node_mask is True
         s.route_pref += weights[:, np.newaxis] * next_node_mask
-
+        print_matrix(s.route_pref)
 
 class RouteChoiceLocalInfo(RouteChoice):
     # change name etc
@@ -1493,6 +1519,7 @@ class RouteChoiceLocalInfo(RouteChoice):
         #  copy of the other code that should be the same
         s.adj_mat_time = np.zeros([len(s.W.NODES), len(s.W.NODES)])
         adj_mat_link_count = np.zeros([len(s.W.NODES), len(s.W.NODES)])
+        print('hello world!')
 
         for link in s.W.LINKS:
             i = link.start_node.id
