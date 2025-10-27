@@ -1553,11 +1553,12 @@ class RouteChoiceLocalInfo(RouteChoice):
                     if i==node.id:
                         adj_mat_time_n[i,j] = s.adj_mat_time[i,j]
                     else:
-                        free_flow_traveltime = link.length / link.free_flow_speed
+                        free_flow_traveltime = link.traveltime_instant[-1] #link.length / link.free_flow_speed
                         
                         new_link_tt = free_flow_traveltime 
                         n = adj_mat_link_count_n[i,j]
                         adj_mat_time_n[i,j] = adj_mat_time_n[i,j]*n/(n+1) + new_link_tt/(n+1) # if there are multiple links between the same nodes, average the travel time
+                        
                         # s.adj_mat_time[i,j] = new_link_tt #if there is only one link between the nodes, this line is fine, but for generality we use the above line
                         adj_mat_link_count_n[i,j] += 1
 
