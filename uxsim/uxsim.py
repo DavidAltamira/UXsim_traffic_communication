@@ -30,6 +30,7 @@ from collections import defaultdict as ddict
 import warnings
 
 import numpy as np
+import networkx as nx
 import matplotlib.pyplot as plt
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import dijkstra
@@ -1492,7 +1493,7 @@ class RouteChoice:
         # Initialize weight array
         weights = np.full(num_nodes, weight0)
         weights[empty_pref_mask] = 1
-        print('weights', weights)
+        #print('weights', weights)
 
         # Create arrays for start and end nodes of links
         start_nodes = np.array([l.start_node.id for l in s.W.LINKS])
@@ -1502,7 +1503,7 @@ class RouteChoice:
         next_node_mask = np.zeros((num_nodes, num_links), dtype=bool)
         for k in range(num_nodes):
             next_node_mask[k] = end_nodes == s.next[start_nodes, k]
-        print('next_node_mask', next_node_mask)
+        #print('next_node_mask', next_node_mask)
 
         # Update route preferences
         # In-place scaling of all elements
@@ -1510,7 +1511,7 @@ class RouteChoice:
 
         # In-place addition of weights where next_node_mask is True
         s.route_pref += weights[:, np.newaxis] * next_node_mask
-        print_matrix(s.route_pref)
+        #print_matrix(s.route_pref)
 
 class RouteChoiceLocalInfo(RouteChoice):
     # change name etc
@@ -1550,7 +1551,7 @@ class RouteChoiceLocalInfo(RouteChoice):
                 if s.W.ADJ_MAT[i,j]:
 
                     if i==node.id:
-                        print('hello world!')
+                        #print('hello world!')
                         adj_mat_time_n[i,j] = s.adj_mat_time[i,j]
                     else:
                         free_flow_traveltime = link.length / link.free_flow_speed
@@ -1574,6 +1575,89 @@ class RouteChoiceLocalInfo(RouteChoice):
         s.next = pred.T
 
         s.dist_record[s.W.T] = s.dist
+
+
+class RouteChoiceSharedInfo_ball(RouteChoice):
+
+    def __init__(s, W, d):
+        super().__init__(W)
+        s.d = d
+
+    # change name etc
+    def route_search_all(s, infty=np.inf, noise=0):
+        ########################### TODO ##################################### instantiate correctly the adj matrix 
+        #  copy of the other code that should be the same
+        s.adj_mat_time = np.zeros([len(s.W.NODES), len(s.W.NODES)])
+        adj_mat_link_count = np.zeros([len(s.W.NODES), len(s.W.NODES)])
+
+        for link in s.W.LINKS:
+            i = link.start_node.id
+            j = link.end_node.id
+            if s.W.ADJ_MAT[i,j]:
+                if s.W.hard_deterministic_mode == False:
+                    new_link_tt = link.traveltime_instant[-1]*s.W.rng.uniform(1, 1+noise) + link.route_choice_penalty
+                else:
+                    new_link_tt = link.traveltime_instant[-1] + link.route_choice_penalty
+                n = adj_mat_link_count[i,j]
+                s.adj_mat_time[i,j] = s.adj_mat_time[i,j]*n/(n+1) + new_link_tt/(n+1) # if there are multiple links between the same nodes, average the travel time
+                # s.adj_mat_time[i,j] = new_link_tt #if there is only one link between the nodes, this line is fine, but for generality we use the above line
+                adj_mat_link_count[i,j] += 1
+                if link.capacity_in == 0: #if the inflow is profibited, travel time is assumed to be infinite
+                    s.adj_mat_time[i,j] = np.inf
+            else:
+                s.adj_mat_time[i,j] = np.inf
+
+        dist = np.zeros([len(s.W.NODES), len(s.W.NODES)])
+        pred = np.zeros([len(s.W.NODES), len(s.W.NODES)])
+
+        links = [(link.start_node.id, link.end_node.id) for link in s.W.LINKS]
+        G = nx.Graph()
+        G.add_edges_from(links)
+
+        # attempt code
+        for node in s.W.NODES:
+            adj_mat_time_n = np.zeros([len(s.W.NODES), len(s.W.NODES)])
+            adj_mat_link_count_n = np.zeros([len(s.W.NODES), len(s.W.NODES)])
+            
+            ### Compute the list of nodes at distance 'd' of node 'node'
+            neigh_d = nx.descendants_at_distance(G, node.id, s.d)
+            #print('Hello Ulysse and Laura')
+
+            for link in s.W.LINKS:
+                i = link.start_node.id
+                j = link.end_node.id
+                if s.W.ADJ_MAT[i,j]:
+
+                    if i==node.id or (i in neigh_d):
+                        ### CHECK if works for the two condition
+                        #if i==node.id:
+                            #print('Ulysse!')
+                        #else:
+                            #print("Laura!")
+                        adj_mat_time_n[i,j] = s.adj_mat_time[i,j]
+                    else:
+                        free_flow_traveltime = link.length / link.free_flow_speed
+                        
+                        new_link_tt = free_flow_traveltime 
+                        n = adj_mat_link_count_n[i,j]
+                        adj_mat_time_n[i,j] = adj_mat_time_n[i,j]*n/(n+1) + new_link_tt/(n+1) # if there are multiple links between the same nodes, average the travel time
+                        
+                        # s.adj_mat_time[i,j] = new_link_tt #if there is only one link between the nodes, this line is fine, but for generality we use the above line
+                        adj_mat_link_count_n[i,j] += 1
+
+            dist_n, pred_n = dijkstra(csr_matrix(adj_mat_time_n).T, indices = node.id, return_predecessors=True)
+            dist[:,node.id] = dist_n # CHECK THAT THIS IS CORRECT
+            pred[:,node.id] = pred_n # CHECK THAT THIS IS CORRECT
+        
+
+        #computes the shortest path from *destination* to *origin*, so that the pred_matrix becomes the next_matrix in the original problem. It is simply achieved by tranposing the matrices twice.
+        #dist, pred = dijkstra(csr_matrix(s.adj_mat_time).T, return_predecessors=True)
+        
+        s.dist = dist.T
+        s.next = pred.T
+
+        s.dist_record[s.W.T] = s.dist
+
 
 class World:
     """
@@ -2711,6 +2795,32 @@ class World:
             pickle.dump(W, f)
 
 class WorldLocalChoice(World):
+
+    def __init__(W, d, name="", deltan=5, reaction_time=1, 
+                 duo_update_time=600, duo_update_weight=0.5, duo_noise=0.01, route_choice_principle="homogeneous_DUO", route_choice_update_gradual=False, instantaneous_TT_timestep_interval=5, 
+                 eular_dt=120, eular_dx=100, 
+                 random_seed=None, 
+                 print_mode=1, save_mode=1, show_mode=0, show_progress=1, show_progress_deltat=600, 
+                 tmax=None, 
+                 vehicle_logging_timestep_interval=1, 
+                 reduce_memory_delete_vehicle_route_pref=False,
+                 hard_deterministic_mode=False, 
+                 meta_data={}, user_attribute=None, user_function=None):
+        
+        super().__init__(name, deltan, reaction_time, 
+                 duo_update_time, duo_update_weight, duo_noise, route_choice_principle, route_choice_update_gradual, instantaneous_TT_timestep_interval, 
+                 eular_dt, eular_dx, 
+                 random_seed, 
+                 print_mode, save_mode, show_mode, show_progress, show_progress_deltat, 
+                 tmax, 
+                 vehicle_logging_timestep_interval, 
+                 reduce_memory_delete_vehicle_route_pref,
+                 hard_deterministic_mode, 
+                 meta_data, user_attribute, user_function)
+        
+        W.d = d
+
+
     def finalize_scenario(W, tmax=None):
         """
         Finalizes the settings and preparations for the simulation scenario execution.
@@ -2744,7 +2854,8 @@ class WorldLocalChoice(World):
             l.init_after_tmax_fix()
 
         #generate adjacency matrix
-        W.ROUTECHOICE = RouteChoiceLocalInfo(W)
+        W.ROUTECHOICE = RouteChoiceSharedInfo_ball(W, d=W.d)
+        #W.ROUTECHOICE = RouteChoiceLocalInfo(W)
         W.ADJ_MAT = np.zeros([len(W.NODES), len(W.NODES)])
         W.ADJ_MAT_LINKS = dict() #リンクオブジェクトが入った隣接行列（的な辞書）
         W.NODE_PAIR_LINKS = dict() #リンクオブジェクトが入った隣接行列（的な辞書）．キーはノード名
